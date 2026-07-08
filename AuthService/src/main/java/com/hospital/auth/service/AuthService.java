@@ -1,9 +1,15 @@
 package com.hospital.auth.service;
 
+import java.util.Map;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClient;
 
 import com.hospital.auth.dto.AuthResponse;
 import com.hospital.auth.dto.LoginRequest;
@@ -16,20 +22,25 @@ import com.hospital.auth.util.JwtUtil;
 @Service
 public class AuthService {
 
+    private static final Logger log = LoggerFactory.getLogger(AuthService.class);
+
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
     private final JwtUtil jwtUtil;
+    private final RestClient restClient;
 
     public AuthService(UserRepository userRepository,
             PasswordEncoder passwordEncoder,
             AuthenticationManager authenticationManager,
-            JwtUtil jwtUtil) {
+            JwtUtil jwtUtil,
+            RestClient.Builder restClientBuilder) {
 
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.authenticationManager = authenticationManager;
         this.jwtUtil = jwtUtil;
+        this.restClient = restClientBuilder.build();
     }
 
     public String register(RegisterRequest request) {
@@ -60,7 +71,52 @@ public class AuthService {
 
         userRepository.save(user);
 
+        // Propagate registration to the appropriate downstream service
+        if (role == Role.DOCTOR) {
+            registerWithDoctorService(user);
+        } else if (role == Role.PATIENT) {
+            registerWithPatientService(user);
+        }
+
         return role + " Registered Successfully";
+    }
+
+    private void registerWithDoctorService(User user) {
+        try {
+            restClient.post()
+                    .uri("http://DOCTOR-SERVICE/doctors/register")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of(
+                            "userId", user.getId(),
+                            "name", user.getUsername(),
+                            "email", user.getEmail()))
+                    .retrieve()
+                    .toBodilessEntity();
+
+            log.info("Doctor profile created for user: {}", user.getEmail());
+        } catch (Exception e) {
+            log.warn("Failed to create doctor profile for user: {}. Reason: {}",
+                    user.getEmail(), e.getMessage());
+        }
+    }
+
+    private void registerWithPatientService(User user) {
+        try {
+            restClient.post()
+                    .uri("http://PATIENT-SERVICE/patients/register")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of(
+                            "userId", user.getId(),
+                            "name", user.getUsername(),
+                            "email", user.getEmail()))
+                    .retrieve()
+                    .toBodilessEntity();
+
+            log.info("Patient profile created for user: {}", user.getEmail());
+        } catch (Exception e) {
+            log.warn("Failed to create patient profile for user: {}. Reason: {}",
+                    user.getEmail(), e.getMessage());
+        }
     }
 
     public AuthResponse login(LoginRequest request) {
@@ -77,4 +133,4 @@ public class AuthService {
 
         return new AuthResponse(token);
     }
-}
+}

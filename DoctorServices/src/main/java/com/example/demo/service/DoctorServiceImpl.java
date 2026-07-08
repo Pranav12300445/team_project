@@ -70,4 +70,21 @@ public class DoctorServiceImpl implements DoctorService {
 
         repository.delete(doctor);
     }
+
+    @Override
+    public Doctor registerDoctor(Long userId, String name, String email) {
+
+        if (repository.existsByEmail(email)) {
+            throw new IllegalArgumentException(
+                    "Doctor with email " + email + " already exists.");
+        }
+
+        Doctor doctor = new Doctor();
+        doctor.setUserId(userId);
+        doctor.setName(name);
+        doctor.setEmail(email);
+        doctor.setAvailable(true);
+
+        return repository.save(doctor);
+    }
 }

@@ -15,4 +15,6 @@ public interface DoctorService {
     Doctor updateDoctor(Long id, Doctor doctor);
 
     void deleteDoctor(Long id);
+
+    Doctor registerDoctor(Long userId, String name, String email);
 }

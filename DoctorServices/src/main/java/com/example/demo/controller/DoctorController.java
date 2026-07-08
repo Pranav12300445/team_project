@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.springframework.web.bind.annotation.*;
 
+import com.example.demo.dto.DoctorRegisterRequest;
 import com.example.demo.entity.Doctor;
 import com.example.demo.service.DoctorService;
 
@@ -22,6 +23,20 @@ public class DoctorController {
 
     public DoctorController(DoctorService service) {
         this.service = service;
+    }
+
+    @Operation(summary = "Register a doctor from auth service",
+               description = "Internal endpoint called by AuthService during registration. Creates a doctor profile with basic info (name, email). The doctor can update their full profile later.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "Doctor profile created successfully"),
+        @ApiResponse(responseCode = "400", description = "Doctor with this email already exists")
+    })
+    @PostMapping("/register")
+    public Doctor registerDoctor(@RequestBody DoctorRegisterRequest request) {
+        return service.registerDoctor(
+                request.getUserId(),
+                request.getName(),
+                request.getEmail());
     }
 
     @Operation(summary = "Add a doctor to the hospital staff",

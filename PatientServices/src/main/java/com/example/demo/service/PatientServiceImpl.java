@@ -61,4 +61,20 @@ public class PatientServiceImpl implements PatientService {
 
         repository.delete(patient);
     }
+
+    @Override
+    public Patient registerPatient(Long userId, String name, String email) {
+
+        if (repository.existsByEmail(email)) {
+            throw new IllegalArgumentException(
+                    "Patient with email " + email + " already exists.");
+        }
+
+        Patient newPatient = new Patient();
+        newPatient.setUserId(userId);
+        newPatient.setName(name);
+        newPatient.setEmail(email);
+
+        return repository.save(newPatient);
+    }
 }

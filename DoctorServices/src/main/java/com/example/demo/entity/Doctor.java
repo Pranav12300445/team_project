@@ -10,21 +10,27 @@ public class Doctor {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(unique = true)
+    private Long userId;
+
     private String name;
     private String specialization;
     private Integer experience;
     private Double consultationFee;
     private String phone;
+
+    @Column(unique = true)
     private String email;
     private Boolean available;
 
     public Doctor() {
     }
 
-    public Doctor(Long id, String name, String specialization,
+    public Doctor(Long id, Long userId, String name, String specialization,
                   Integer experience, Double consultationFee,
                   String phone, String email, Boolean available) {
         this.id = id;
+        this.userId = userId;
         this.name = name;
         this.specialization = specialization;
         this.experience = experience;
@@ -40,6 +46,14 @@ public class Doctor {
 
     public void setId(Long id) {
         this.id = id;
+    }
+
+    public Long getUserId() {
+        return userId;
+    }
+
+    public void setUserId(Long userId) {
+        this.userId = userId;
     }
 
     public String getName() {

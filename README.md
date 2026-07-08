@@ -1,6 +1,6 @@
 # 🏥 Hospital Management System — Microservices Architecture
 
-A full-stack Hospital Management System built with **Spring Boot microservices**, connected via **Eureka Service Discovery** and an **API Gateway**. The system handles user authentication (JWT), doctor staff management, and patient medical records.
+A full-stack Hospital Management System built with **Spring Boot microservices**, connected via **Eureka Service Discovery** and an **API Gateway**. The system handles user authentication (JWT), doctor staff management, and patient medical records — with **automatic cross-service registration** so that signing up through AuthService creates the corresponding Doctor or Patient profile instantly.
 
 ---
 
@@ -16,9 +16,9 @@ A full-stack Hospital Management System built with **Spring Boot microservices**
           │                       │                       │
           ▼                       ▼                       ▼
  ┌─────────────────┐   ┌─────────────────┐   ┌─────────────────┐
- │   AuthService    │   │  DoctorService   │   │ PatientService   │
+ │   AuthService    │──▶│  DoctorService   │   │ PatientService   │
  │   (Port 8081)    │   │   (Port 8082)    │   │   (Port 8083)    │
- │   JWT + MySQL    │   │     MySQL        │   │     MySQL        │
+ │   JWT + MySQL    │──▶│     MySQL        │   │     MySQL        │
  └────────┬─────────┘   └────────┬─────────┘   └────────┬─────────┘
           │                       │                       │
           └───────────────────────┼───────────────────────┘
@@ -32,6 +32,8 @@ A full-stack Hospital Management System built with **Spring Boot microservices**
                          │  Client / Postman │
                          └──────────────────┘
 ```
+
+> **Inter-service calls**: AuthService uses a **load-balanced RestClient** (via Eureka) to call DoctorService or PatientService during registration, automatically creating the domain profile.
 
 ---
 
@@ -80,23 +82,42 @@ The **single entry point** for all client requests. Routes traffic to the correc
 
 ### 3. AuthService (`/AuthService`) — Port 8081
 
-Handles **user registration, login, and JWT token generation**. Secured with Spring Security.
+Handles **user registration, login, and JWT token generation**. Secured with Spring Security. On registration, **automatically creates a Doctor or Patient profile** in the corresponding downstream service via inter-service REST calls.
 
 #### Endpoints
 
 | Method | Endpoint | Auth Required | Description |
 |--------|----------|:------------:|-------------|
-| `POST` | `/auth/register` | ❌ | Register a new user (DOCTOR or PATIENT role) |
+| `POST` | `/auth/register` | ❌ | Register a new user (DOCTOR or PATIENT role) — also creates Doctor/Patient profile |
 | `POST` | `/auth/login` | ❌ | Login and receive a JWT token |
 | `GET` | `/auth/profile` | ✅ Bearer Token | View the logged-in user's profile |
+
+#### Registration Flow
+
+```
+POST /auth/register (role=DOCTOR)
+  ├─ 1. Save User to `users` table (AuthService)
+  ├─ 2. HTTP POST to DOCTOR-SERVICE /doctors/register (via Eureka lb://)
+  │     └─ Creates a Doctor record with userId, name, email
+  └─ 3. Return "DOCTOR Registered Successfully"
+
+POST /auth/register (role=PATIENT)
+  ├─ 1. Save User to `users` table (AuthService)
+  ├─ 2. HTTP POST to PATIENT-SERVICE /patients/register (via Eureka lb://)
+  │     └─ Creates a Patient record with userId, name, email
+  └─ 3. Return "PATIENT Registered Successfully"
+```
+
+> **Note**: If the downstream service is unavailable, the user is still saved in the `users` table and a warning is logged. The Doctor/Patient profile can be created manually later.
 
 #### How Authentication Works
 
 1. User calls `/auth/register` with username, email, password, and role
 2. Password is hashed with **BCrypt** and stored in MySQL
-3. User calls `/auth/login` with email + password
-4. Server validates credentials and returns a **JWT token** (valid for 24 hours)
-5. For protected endpoints, pass the token as: `Authorization: Bearer <token>`
+3. AuthService calls DoctorService or PatientService to create the domain profile
+4. User calls `/auth/login` with email + password
+5. Server validates credentials and returns a **JWT token** (valid for 24 hours)
+6. For protected endpoints, pass the token as: `Authorization: Bearer <token>`
 
 #### JWT Token Contains
 - User ID
@@ -123,22 +144,26 @@ Manages the **hospital's doctor directory** — onboarding staff, tracking avail
 
 | Method | Endpoint | Auth Required | Description |
 |--------|----------|:------------:|-------------|
-| `POST` | `/doctors` | ❌ | Add a new doctor to the hospital staff |
+| `POST` | `/doctors/register` | ❌ (internal) | Called by AuthService during registration — creates profile with basic info |
+| `POST` | `/doctors` | ❌ | Add a new doctor to the hospital staff (manual) |
 | `GET` | `/doctors` | ❌ | List all doctors in the hospital |
 | `GET` | `/doctors/{id}` | ❌ | Look up a specific doctor's profile |
-| `PUT` | `/doctors/{id}` | ❌ | Update a doctor's details (fee, availability, etc.) |
+| `PUT` | `/doctors/{id}` | ❌ | Update a doctor's details (specialization, fee, availability, etc.) |
 | `DELETE` | `/doctors/{id}` | ❌ | Remove a doctor from the hospital |
+
+> **Profile completion**: After registration, doctors have only `name` and `email`. Use `PUT /doctors/{id}` to update specialization, experience, consultation fee, phone, and availability.
 
 #### Doctor Entity Fields
 | Field | Type | Description |
 |-------|------|-------------|
 | `id` | Long | Auto-generated unique ID |
+| `userId` | Long | Links back to the `users` table (unique) |
 | `name` | String | Doctor's full name |
 | `specialization` | String | e.g., Cardiology, Neurology, Orthopedics |
 | `experience` | Integer | Years of practice |
 | `consultationFee` | Double | Fee per consultation |
 | `phone` | String | Contact number |
-| `email` | String | Email address |
+| `email` | String | Email address (unique) |
 | `available` | Boolean | Whether the doctor is currently available |
 
 ---
@@ -151,21 +176,25 @@ Manages **patient medical records** — admissions, record lookups, updates, and
 
 | Method | Endpoint | Auth Required | Description |
 |--------|----------|:------------:|-------------|
-| `POST` | `/patients` | ❌ | Admit a new patient (create medical record) |
+| `POST` | `/patients/register` | ❌ (internal) | Called by AuthService during registration — creates record with basic info |
+| `POST` | `/patients` | ❌ | Admit a new patient (create medical record manually) |
 | `GET` | `/patients` | ❌ | List all patient records |
 | `GET` | `/patients/{id}` | ❌ | Look up a specific patient's record |
-| `PUT` | `/patients/{id}` | ❌ | Update a patient's details |
+| `PUT` | `/patients/{id}` | ❌ | Update a patient's details (gender, age, blood group, etc.) |
 | `DELETE` | `/patients/{id}` | ❌ | Discharge / remove a patient record |
+
+> **Profile completion**: After registration, patients have only `name` and `email`. Use `PUT /patients/{id}` to update gender, age, phone, address, blood group, and date of birth.
 
 #### Patient Entity Fields
 | Field | Type | Description |
 |-------|------|-------------|
 | `id` | Long | Auto-generated unique ID |
+| `userId` | Long | Links back to the `users` table (unique) |
 | `name` | String | Patient's full name |
 | `gender` | String | Male / Female / Other |
 | `age` | Integer | Patient's age |
 | `phone` | String | Contact number |
-| `email` | String | Email address |
+| `email` | String | Email address (unique) |
 | `address` | String | Residential address |
 | `bloodGroup` | String | e.g., A+, B-, O+, AB+ |
 | `dateOfBirth` | LocalDate | Format: `YYYY-MM-DD` |
@@ -251,7 +280,9 @@ Each service has interactive API docs:
 
 ## 🔄 API Usage Workflow
 
-### Step 1: Register a User
+### Step 1: Register a Doctor
+
+Registering creates **both** a `users` record (for auth) **and** a `doctors` record (for profile) automatically.
 
 ```bash
 curl -X POST http://localhost:8080/auth/register \
@@ -265,7 +296,62 @@ curl -X POST http://localhost:8080/auth/register \
 ```
 **Response**: `DOCTOR Registered Successfully`
 
-### Step 2: Login
+> ✅ A Doctor profile is now created in the `doctors` table with `name="Dr. Smith"`, `email="drsmith@hospital.com"`, and `available=true`.
+
+### Step 2: Complete Doctor Profile
+
+The auto-created doctor profile has only basic info. Update it with full details:
+
+```bash
+curl -X PUT http://localhost:8080/doctors/1 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Dr. Smith",
+    "specialization": "Cardiology",
+    "experience": 12,
+    "consultationFee": 500.00,
+    "phone": "9876543210",
+    "email": "drsmith@hospital.com",
+    "available": true
+  }'
+```
+
+### Step 3: Register a Patient
+
+Same flow — creates both a `users` record and a `patients` record.
+
+```bash
+curl -X POST http://localhost:8080/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "Rahul Sharma",
+    "email": "rahul@email.com",
+    "password": "password123",
+    "role": "PATIENT"
+  }'
+```
+**Response**: `PATIENT Registered Successfully`
+
+> ✅ A Patient record is now created in the `patients` table with `name="Rahul Sharma"` and `email="rahul@email.com"`.
+
+### Step 4: Complete Patient Profile
+
+```bash
+curl -X PUT http://localhost:8080/patients/1 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Rahul Sharma",
+    "gender": "Male",
+    "age": 32,
+    "phone": "9123456789",
+    "email": "rahul@email.com",
+    "address": "Mumbai, India",
+    "bloodGroup": "B+",
+    "dateOfBirth": "1994-03-15"
+  }'
+```
+
+### Step 5: Login
 
 ```bash
 curl -X POST http://localhost:8080/auth/login \
@@ -282,40 +368,7 @@ curl -X POST http://localhost:8080/auth/login \
 }
 ```
 
-### Step 3: Add a Doctor to Staff
-
-```bash
-curl -X POST http://localhost:8080/doctors \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Dr. Sarah Johnson",
-    "specialization": "Cardiology",
-    "experience": 12,
-    "consultationFee": 500.00,
-    "phone": "9876543210",
-    "email": "sarah@hospital.com",
-    "available": true
-  }'
-```
-
-### Step 4: Admit a Patient
-
-```bash
-curl -X POST http://localhost:8080/patients \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Rahul Sharma",
-    "gender": "Male",
-    "age": 32,
-    "phone": "9123456789",
-    "email": "rahul@email.com",
-    "address": "Mumbai, India",
-    "bloodGroup": "B+",
-    "dateOfBirth": "1994-03-15"
-  }'
-```
-
-### Step 5: View Profile (Protected)
+### Step 6: View Profile (Protected)
 
 ```bash
 curl -X GET http://localhost:8080/auth/profile \
@@ -336,7 +389,9 @@ Hospital_Management_System/
 │
 ├── AuthService/                     # Authentication Service
 │   └── src/main/java/com/hospital/auth/
-│       ├── config/SecurityConfig.java
+│       ├── config/
+│       │   ├── SecurityConfig.java
+│       │   └── RestClientConfig.java       # Load-balanced RestClient for inter-service calls
 │       ├── controller/AuthController.java
 │       ├── dto/
 │       │   ├── AuthResponse.java
@@ -349,14 +404,15 @@ Hospital_Management_System/
 │       ├── repository/UserRepository.java
 │       ├── security/JwtAuthenticationFilter.java
 │       ├── service/
-│       │   ├── AuthService.java
+│       │   ├── AuthService.java             # Calls Doctor/Patient services on registration
 │       │   └── CustomUserDetailsService.java
 │       └── util/JwtUtil.java
 │
 ├── DoctorServices/                  # Doctor Management Service
 │   └── src/main/java/com/example/demo/
-│       ├── controller/DoctorController.java
-│       ├── entity/Doctor.java
+│       ├── controller/DoctorController.java  # Includes POST /doctors/register
+│       ├── dto/DoctorRegisterRequest.java    # DTO for registration
+│       ├── entity/Doctor.java                # Has userId field
 │       ├── exception/
 │       │   ├── ResourceNotFoundException.java
 │       │   └── GlobalExceptionHandler.java
@@ -367,8 +423,9 @@ Hospital_Management_System/
 │
 └── PatientServices/                 # Patient Management Service
     └── src/main/java/com/example/demo/
-        ├── controller/PatientController.java
-        ├── entity/Patient.java
+        ├── controller/PatientController.java  # Includes POST /patients/register
+        ├── dto/PatientRegisterRequest.java    # DTO for registration
+        ├── entity/Patient.java                # Has userId field
         ├── exception/
         │   ├── ResourceNotFoundException.java
         │   └── GlobalExceptionHandler.java
@@ -397,13 +454,14 @@ Hospital_Management_System/
 
 All services share a single MySQL database: `hospital_management_system`
 
-| Table | Created By | Description |
-|-------|-----------|-------------|
-| `users` | AuthService | Stores registered users with hashed passwords |
-| `doctors` | DoctorService | Hospital staff directory |
-| `patients` | PatientService | Patient medical records |
+| Table | Created By | Key Fields | Description |
+|-------|-----------|------------|-------------|
+| `users` | AuthService | `id`, `email`, `role` | Stores registered users with hashed passwords |
+| `doctors` | DoctorService | `id`, `userId` → `users.id`, `email` | Hospital staff directory (linked to users) |
+| `patients` | PatientService | `id`, `userId` → `users.id`, `email` | Patient medical records (linked to users) |
 
-> Tables are auto-created by Hibernate (`spring.jpa.hibernate.ddl-auto=update`).
+> Tables are auto-created by Hibernate (`spring.jpa.hibernate.ddl-auto=update`).  
+> The `userId` column in `doctors` and `patients` tables links each domain record back to the corresponding entry in the `users` table.
 
 ---
 

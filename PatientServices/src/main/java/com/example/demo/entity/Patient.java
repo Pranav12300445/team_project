@@ -12,10 +12,15 @@ public class Patient {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(unique = true)
+    private Long userId;
+
     private String name;
     private String gender;
     private Integer age;
     private String phone;
+
+    @Column(unique = true)
     private String email;
     private String address;
     private String bloodGroup;
@@ -24,10 +29,11 @@ public class Patient {
     public Patient() {
     }
 
-    public Patient(Long id, String name, String gender, Integer age,
+    public Patient(Long id, Long userId, String name, String gender, Integer age,
                    String phone, String email, String address,
                    String bloodGroup, LocalDate dateOfBirth) {
         this.id = id;
+        this.userId = userId;
         this.name = name;
         this.gender = gender;
         this.age = age;
@@ -44,6 +50,14 @@ public class Patient {
 
     public void setId(Long id) {
         this.id = id;
+    }
+
+    public Long getUserId() {
+        return userId;
+    }
+
+    public void setUserId(Long userId) {
+        this.userId = userId;
     }
 
     public String getName() {
