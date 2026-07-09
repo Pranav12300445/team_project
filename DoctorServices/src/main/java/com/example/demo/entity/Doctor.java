@@ -1,16 +1,29 @@
 package com.example.demo.entity;
 
 import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 @Entity
 @Table(name = "doctors")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
 public class Doctor {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(unique = true)
+    /**
+     * Logical Foreign Key → users.id (AuthService)
+     * Links this doctor profile to the authenticated user account.
+     * Maintained via inter-service REST call during registration.
+     */
+    @Column(name = "user_id", unique = true, nullable = false)
     private Long userId;
 
     private String name;
@@ -22,93 +35,4 @@ public class Doctor {
     @Column(unique = true)
     private String email;
     private Boolean available;
-
-    public Doctor() {
-    }
-
-    public Doctor(Long id, Long userId, String name, String specialization,
-                  Integer experience, Double consultationFee,
-                  String phone, String email, Boolean available) {
-        this.id = id;
-        this.userId = userId;
-        this.name = name;
-        this.specialization = specialization;
-        this.experience = experience;
-        this.consultationFee = consultationFee;
-        this.phone = phone;
-        this.email = email;
-        this.available = available;
-    }
-
-    public Long getId() {
-        return id;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
-    }
-
-    public Long getUserId() {
-        return userId;
-    }
-
-    public void setUserId(Long userId) {
-        this.userId = userId;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
-    }
-
-    public String getSpecialization() {
-        return specialization;
-    }
-
-    public void setSpecialization(String specialization) {
-        this.specialization = specialization;
-    }
-
-    public Integer getExperience() {
-        return experience;
-    }
-
-    public void setExperience(Integer experience) {
-        this.experience = experience;
-    }
-
-    public Double getConsultationFee() {
-        return consultationFee;
-    }
-
-    public void setConsultationFee(Double consultationFee) {
-        this.consultationFee = consultationFee;
-    }
-
-    public String getPhone() {
-        return phone;
-    }
-
-    public void setPhone(String phone) {
-        this.phone = phone;
-    }
-
-    public String getEmail() {
-        return email;
-    }
-
-    public void setEmail(String email) {
-        this.email = email;
-    }
-
-    public Boolean getAvailable() {
-        return available;
-    }
-
-    public void setAvailable(Boolean available) {
-        this.available = available;
-    }
 }
