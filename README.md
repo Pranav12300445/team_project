@@ -201,6 +201,34 @@ Manages **patient medical records** — admissions, record lookups, updates, and
 
 ---
 
+### 6. AppointmentService (`/` at root) — Port 8084
+
+Manages **appointment bookings** between patients and doctors, tracks appointment statuses, and exposes endpoints to let doctors accept/complete appointments.
+
+#### Endpoints
+
+| Method | Endpoint | Auth Required | Description |
+|--------|----------|:------------:|-------------|
+| `POST` | `/appointments` | ❌ | Book a new appointment (expects doctorId, patientId, date, time, reason) |
+| `GET` | `/appointments` | ❌ | List all appointments |
+| `GET` | `/appointments/{id}` | ❌ | Look up details for a specific appointment |
+| `PUT` | `/appointments/{id}` | ❌ | Update appointment details |
+| `PUT` | `/appointments/{id}/status` | ❌ | Update appointment status (e.g., set status to `CONFIRMED` / `COMPLETED` / `CANCELLED`) |
+| `DELETE` | `/appointments/{id}` | ❌ | Delete / cancel an appointment |
+
+#### Appointment Entity Fields
+| Field | Type | Description |
+|-------|------|-------------|
+| `appointmentId` | Long | Auto-generated unique ID |
+| `doctorId` | Long | ID of the doctor |
+| `patientId` | Long | ID of the patient |
+| `appointmentDate` | LocalDate | Date of the appointment |
+| `appointmentTime` | LocalTime | Time of the appointment |
+| `reason` | String | Reason for appointment |
+| `status` | AppointmentStatus | Current status: `PENDING`, `CONFIRMED`, `COMPLETED`, `CANCELLED` |
+
+---
+
 ## 🚀 Getting Started
 
 ### Prerequisites
@@ -252,7 +280,10 @@ cd DoctorServices
 cd PatientServices
 ./mvnw spring-boot:run
 
-# Terminal 5 — API Gateway (start last)
+# Terminal 5 — Appointment Service (Root)
+./mvnw spring-boot:run
+
+# Terminal 6 — API Gateway (start last)
 cd ApiGateway
 ./mvnw spring-boot:run
 ```
@@ -433,6 +464,23 @@ Hospital_Management_System/
         └── service/
             ├── PatientService.java
             └── PatientServiceImpl.java
+
+├── src/main/java/com/shaan/appointmentservice/  # Appointment Booking Service (Root)
+│   ├── client/
+│   │   ├── DoctorClient.java
+│   │   └── PatientClient.java
+│   ├── controller/AppointmentController.java
+│   ├── dto/
+│   │   ├── AppointmentRequest.java
+│   │   ├── AppointmentResponse.java
+│   │   ├── DoctorDTO.java
+│   │   └── PatientDTO.java
+│   ├── entity/Appointment.java
+│   ├── enums/AppointmentStatus.java
+│   ├── mapper/AppointmentMapper.java
+│   └── service/
+│       ├── AppointmentService.java
+│       └── AppointmentServiceImpl.java
 ```
 
 ---
@@ -446,6 +494,7 @@ Hospital_Management_System/
 | AuthService | 8081 | AUTH-SERVICE |
 | DoctorService | 8082 | DOCTOR-SERVICE |
 | PatientService | 8083 | PATIENT-SERVICE |
+| AppointmentService | 8084 | APPOINTMENT-SERVICE |
 | MySQL | 3306 | — |
 
 ---
@@ -459,6 +508,7 @@ All services share a single MySQL database: `hospital_management_system`
 | `users` | AuthService | `id`, `email`, `role` | Stores registered users with hashed passwords |
 | `doctors` | DoctorService | `id`, `userId` → `users.id`, `email` | Hospital staff directory (linked to users) |
 | `patients` | PatientService | `id`, `userId` → `users.id`, `email` | Patient medical records (linked to users) |
+| `appointments` | AppointmentService | `appointment_id`, `doctor_id`, `patient_id` | Tracks patient appointment bookings |
 
 > Tables are auto-created by Hibernate (`spring.jpa.hibernate.ddl-auto=update`).  
 > The `userId` column in `doctors` and `patients` tables links each domain record back to the corresponding entry in the `users` table.

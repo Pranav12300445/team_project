@@ -83,4 +83,19 @@ public class AppointmentServiceImpl implements AppointmentService {
 
         repository.delete(appointment);
     }
+
+    @Override
+    public AppointmentResponse updateAppointmentStatus(Long id, com.shaan.appointmentservice.enums.AppointmentStatus status) {
+        Appointment appointment = repository.findById(id)
+                .orElseThrow(() ->
+                        new AppointmentNotFoundException(
+                                "Appointment with ID " + id + " not found"));
+
+        appointment.setStatus(status);
+        appointment.setUpdatedAt(LocalDateTime.now());
+
+        Appointment updatedAppointment = repository.save(appointment);
+
+        return AppointmentMapper.toResponse(updatedAppointment);
+    }
 }

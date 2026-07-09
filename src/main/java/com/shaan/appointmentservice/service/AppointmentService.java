@@ -17,4 +17,6 @@ public interface AppointmentService {
                                           AppointmentRequest request);
 
     void deleteAppointment(Long id);
+
+    AppointmentResponse updateAppointmentStatus(Long id, com.shaan.appointmentservice.enums.AppointmentStatus status);
 }

@@ -84,4 +84,16 @@ public class AppointmentController {
 
         return ResponseEntity.ok("Appointment Deleted Successfully");
     }
+
+    // Update Appointment Status
+    @PutMapping("/{id}/status")
+    public ResponseEntity<AppointmentResponse> updateAppointmentStatus(
+            @PathVariable Long id,
+            @RequestParam com.shaan.appointmentservice.enums.AppointmentStatus status) {
+
+        AppointmentResponse response =
+                appointmentService.updateAppointmentStatus(id, status);
+
+        return ResponseEntity.ok(response);
+    }
 }
