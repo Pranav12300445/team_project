@@ -51,6 +51,8 @@ A full-stack Hospital Management System built with **Spring Boot microservices**
 | **Lombok** | Reduce boilerplate code |
 | **SpringDoc OpenAPI** | Swagger UI for API documentation |
 | **Maven** | Build and dependency management |
+| **HTML5 & CSS3** | Client structure & styling with responsive CSS variables (Glassmorphism design) |
+| **Vanilla JS (ES6+)** | Single Page Application logic, in-memory caching, routing, and fetch integrations |
 
 ---
 
@@ -229,6 +231,40 @@ Manages **appointment bookings** between patients and doctors, tracks appointmen
 
 ---
 
+## 🖥️ Frontend Architecture (`/frontend`)
+
+The client application is a responsive, highly performant **Single Page Application (SPA)** written using native web technologies for speed, simplicity, and portability.
+
+```
+                  ┌──────────────────────────────────────────────┐
+                  │                 index.html                   │
+                  │  (Single Page Web Interface / Portal Client)  │
+                  └──────────────────────┬───────────────────────┘
+                                         │
+                        HTTP Requests /  │  localStorage (JWT)
+                        REST API Calls   │  hms_token
+                                         ▼
+                  ┌──────────────────────────────────────────────┐
+                  │            API Gateway (Port 8080)           │
+                  └──────────────────────────────────────────────┘
+```
+
+### Key Technical Pillars:
+- **Zero-Dependency SPA**: Built entirely with standard HTML5, modern semantic CSS3, and ES6+ JavaScript. No bundlers or compilers (like Webpack/Vite/Babel) are needed to launch, keeping the frontend fast and lightweight.
+- **Glassmorphism Design & Styling**: Leverages CSS Variables (`:root`) to manage design tokens (colors, blur intensities, border radii). Features background blur filters, interactive micro-animations (smooth hover transforms, scales), custom scrollbars, and modern typography (Inter and JetBrains Mono) for a premium, responsive dashboard experience.
+- **Client-Side Routing**: Navigates between views dynamically via a central state-driven function `navigate(page)` (e.g., Dashboard, My Profile, Book Appointment, My Appointments, and Patient Directory) without triggerring full page reloads.
+- **Local In-Memory Cache**: Maintains transient caches (`doctorsCache`, `patientsCache`, `appointmentsCache`, `currentUser`, `myProfile`) to store service payloads locally, minimizing network latency.
+- **Rich Interaction Utilities**: Implements dynamic notification overlays via a custom Toast system (`toast(message, type)`), custom-rendered loading spinner states, and dynamic confirmation dialog overlays (`#modal-root`).
+- **Responsive Framework**: Adopts flexbox and grid layouts paired with specific media queries targeting devices below `768px` to swap layouts seamlessly from static sidebar components to fluid mobile viewports.
+
+### Security & Session Management:
+- **JWT Decoding**: Upon login, the client decodes the signature-less payload of the JWT token to extract the logged-in user's profile metadata (`id`, `username`, `role`, `email`, and `expiration`).
+- **Session Persistence**: Saves the token securely in standard `localStorage` (`hms_token`) and automatically validates expiration times to prompt session logouts on timeout.
+- **State-Dependent Route Guarding**: Dynamically alters the navigation menus based on whether the logged-in user has the `PATIENT` or `DOCTOR` role.
+- **Token Injection Filter**: An API helper wrapper automatically configures request headers to pass the current token as `Authorization: Bearer <token>` for all calls to microservices.
+
+---
+
 ## 🚀 Getting Started
 
 ### Prerequisites
@@ -286,12 +322,17 @@ cd PatientServices
 # Terminal 6 — API Gateway (start last)
 cd ApiGateway
 ./mvnw spring-boot:run
+
+# Terminal 7 — Frontend Application
+# Double-click frontend/index.html to open in your browser, or serve it:
+npx serve frontend
 ```
 
 ### 4. Verify
 
 - **Eureka Dashboard**: http://localhost:8761 — all 4 services should show as `UP`
 - **API Gateway**: http://localhost:8080 — single entry point for all APIs
+- **Frontend Portal**: Open `frontend/index.html` in your browser (or at `http://localhost:3000` if using a local server like `serve`)
 
 ---
 
@@ -309,12 +350,44 @@ Each service has interactive API docs:
 
 ---
 
-## 🔄 API Usage Workflow
+## 🔄 End-to-End System Workflow
 
-### Step 1: Register a Doctor
+The Hospital Management System operates through a synchronized workflow between the Frontend UI Portal, the API Gateway, and the microservices database layer. Below is the step-by-step lifecycle of the system.
 
-Registering creates **both** a `users` record (for auth) **and** a `doctors` record (for profile) automatically.
+### 🗺️ Unified Workflow Diagram
 
+```
+[Patient / Doctor]
+      │
+      ├─ 1. Register Account (index.html) ──▶ AuthService (Port 8081)
+      │                                            │
+      │                                            ├─ Save Auth Account (Auth DB)
+      │                                            └─ REST Post (Eureka) ──▶ [Doctor/Patient Service]
+      │                                                                           └─ Initialize Profile
+      │
+      ├─ 2. Log In & Fetch Token (index.html) ──▶ AuthService (Port 8081)
+      │                                                 └─ Returns JWT Token
+      │
+      ├─ 3. Complete Profile Details (index.html) ──▶ [Doctor/Patient Service] (PUT update)
+      │
+      ├─ 4. Book Appointment (Patient) ──▶ AppointmentService (Port 8084) (Creates PENDING)
+      │
+      └─ 5. Review & Confirm (Doctor) ──▶ AppointmentService (Port 8084) (Updates to CONFIRMED/COMPLETED)
+```
+
+---
+
+### 1. User Onboarding & Automated Service Sync
+
+When a new user signs up in the frontend portal, the client sends a registration request containing the user's role (`DOCTOR` or `PATIENT`).
+
+1. The client submits `POST /auth/register` to the API Gateway.
+2. The Gateway routes the request to the `AuthService`.
+3. The `AuthService` hashes the password and saves the account in the `users` table.
+4. Using a load-balanced `RestClient` over Eureka, the `AuthService` calls the respective service (`DoctorService` or `PatientService`) to create a stub profile linked by `userId`.
+5. The frontend handles the response, displays a toast, and guides the user to the login screen.
+
+**REST Equivalent**:
 ```bash
 curl -X POST http://localhost:8080/auth/register \
   -H "Content-Type: application/json" \
@@ -327,63 +400,17 @@ curl -X POST http://localhost:8080/auth/register \
 ```
 **Response**: `DOCTOR Registered Successfully`
 
-> ✅ A Doctor profile is now created in the `doctors` table with `name="Dr. Smith"`, `email="drsmith@hospital.com"`, and `available=true`.
+---
 
-### Step 2: Complete Doctor Profile
+### 2. Login & JWT Session Retrieval
 
-The auto-created doctor profile has only basic info. Update it with full details:
+The user enters their email and password to log in.
 
-```bash
-curl -X PUT http://localhost:8080/doctors/1 \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Dr. Smith",
-    "specialization": "Cardiology",
-    "experience": 12,
-    "consultationFee": 500.00,
-    "phone": "9876543210",
-    "email": "drsmith@hospital.com",
-    "available": true
-  }'
-```
+1. The client submits `POST /auth/login` to the Gateway.
+2. `AuthService` validates the credentials and responds with a JWT token (24-hour expiration).
+3. The frontend captures the token, saves it to `localStorage` under `hms_token`, decodes it to set up user state, and mounts the application dashboard layout.
 
-### Step 3: Register a Patient
-
-Same flow — creates both a `users` record and a `patients` record.
-
-```bash
-curl -X POST http://localhost:8080/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username": "Rahul Sharma",
-    "email": "rahul@email.com",
-    "password": "password123",
-    "role": "PATIENT"
-  }'
-```
-**Response**: `PATIENT Registered Successfully`
-
-> ✅ A Patient record is now created in the `patients` table with `name="Rahul Sharma"` and `email="rahul@email.com"`.
-
-### Step 4: Complete Patient Profile
-
-```bash
-curl -X PUT http://localhost:8080/patients/1 \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Rahul Sharma",
-    "gender": "Male",
-    "age": 32,
-    "phone": "9123456789",
-    "email": "rahul@email.com",
-    "address": "Mumbai, India",
-    "bloodGroup": "B+",
-    "dateOfBirth": "1994-03-15"
-  }'
-```
-
-### Step 5: Login
-
+**REST Equivalent**:
 ```bash
 curl -X POST http://localhost:8080/auth/login \
   -H "Content-Type: application/json" \
@@ -399,11 +426,72 @@ curl -X POST http://localhost:8080/auth/login \
 }
 ```
 
-### Step 6: View Profile (Protected)
+---
 
+### 3. Profile Completion
+
+The profile initialized during signup contains only basic info (name/email). The user can complete their onboarding in the **My Profile** view.
+
+1. The user fills in missing details (specialization, experience, and fee for doctors; or age, gender, DOB, address, and blood group for patients).
+2. The client sends a `PUT` request containing the updated fields to `/doctors/{id}` or `/patients/{id}` through the Gateway.
+3. The target database updates the record, and the frontend updates its internal `myProfile` cache.
+
+**REST Equivalent (Doctor Update)**:
 ```bash
-curl -X GET http://localhost:8080/auth/profile \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9..."
+curl -X PUT http://localhost:8080/doctors/1 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Dr. Smith",
+    "specialization": "Cardiology",
+    "experience": 12,
+    "consultationFee": 500.00,
+    "phone": "9876543210",
+    "email": "drsmith@hospital.com",
+    "available": true
+  }'
+```
+
+---
+
+### 4. Appointment Booking (Patient Flow)
+
+Patients can search for available doctors and book visits.
+
+1. The client fetches all doctors via `GET /doctors` and displays only those with `available: true`.
+2. The patient fills in the date, time, and reason, and books the appointment.
+3. The client submits `POST /appointments` to the `AppointmentService`.
+4. The database stores the booking in a `PENDING` state, which instantly shows up on both the patient's and doctor's dashboards.
+
+**REST Equivalent**:
+```bash
+curl -X POST http://localhost:8080/appointments \
+  -H "Content-Type: application/json" \
+  -d '{
+    "doctorId": 1,
+    "patientId": 1,
+    "appointmentDate": "2026-07-15",
+    "appointmentTime": "10:30:00",
+    "reason": "Routine checkup"
+  }'
+```
+
+---
+
+### 5. Appointment Review & Actions (Doctor Flow)
+
+Doctors can manage bookings assigned to them from the **My Appointments** dashboard.
+
+1. The doctor views all appointments where `doctorId` matches their profile ID.
+2. The doctor can invoke the following status changes:
+   - **Accept**: Changes status to `CONFIRMED` (`PUT /appointments/{id}/status?status=CONFIRMED`).
+   - **Complete**: Changes status to `COMPLETED` (`PUT /appointments/{id}/status?status=COMPLETED`).
+   - **Cancel**: Changes status to `CANCELLED` (`PUT /appointments/{id}/status?status=CANCELLED`).
+3. The client updates the appointment table in real-time.
+
+**REST Equivalent (Confirming Status)**:
+```bash
+curl -X PUT http://localhost:8080/appointments/1/status?status=CONFIRMED \
+  -H "Authorization: Bearer <token>"
 ```
 
 ---
@@ -452,35 +540,39 @@ Hospital_Management_System/
 │           ├── DoctorService.java
 │           └── DoctorServiceImpl.java
 │
-└── PatientServices/                 # Patient Management Service
-    └── src/main/java/com/example/demo/
-        ├── controller/PatientController.java  # Includes POST /patients/register
-        ├── dto/PatientRegisterRequest.java    # DTO for registration
-        ├── entity/Patient.java                # Has userId field
-        ├── exception/
-        │   ├── ResourceNotFoundException.java
-        │   └── GlobalExceptionHandler.java
-        ├── repo/PatientRepository.java
-        └── service/
-            ├── PatientService.java
-            └── PatientServiceImpl.java
-
-├── src/main/java/com/shaan/appointmentservice/  # Appointment Booking Service (Root)
-│   ├── client/
-│   │   ├── DoctorClient.java
-│   │   └── PatientClient.java
-│   ├── controller/AppointmentController.java
-│   ├── dto/
-│   │   ├── AppointmentRequest.java
-│   │   ├── AppointmentResponse.java
-│   │   ├── DoctorDTO.java
-│   │   └── PatientDTO.java
-│   ├── entity/Appointment.java
-│   ├── enums/AppointmentStatus.java
-│   ├── mapper/AppointmentMapper.java
-│   └── service/
-│       ├── AppointmentService.java
-│       └── AppointmentServiceImpl.java
+├── PatientServices/                 # Patient Management Service
+│   └── src/main/java/com/example/demo/
+│       ├── controller/PatientController.java  # Includes POST /patients/register
+│       ├── dto/PatientRegisterRequest.java    # DTO for registration
+│       ├── entity/Patient.java                # Has userId field
+│       ├── exception/
+│       │   ├── ResourceNotFoundException.java
+│       │   └── GlobalExceptionHandler.java
+│       ├── repo/PatientRepository.java
+│       └── service/
+│           ├── PatientService.java
+│           └── PatientServiceImpl.java
+│
+├── AppointmentService/              # Appointment Booking Service
+│   └── src/main/java/com/shaan/appointmentservice/
+│       ├── client/
+│       │   ├── DoctorClient.java
+│       │   └── PatientClient.java
+│       ├── controller/AppointmentController.java
+│       ├── dto/
+│       │   ├── AppointmentRequest.java
+│       │   ├── AppointmentResponse.java
+│       │   ├── DoctorDTO.java
+│       │   └── PatientDTO.java
+│       ├── entity/Appointment.java
+│       ├── enums/AppointmentStatus.java
+│       ├── mapper/AppointmentMapper.java
+│       └── service/
+│           ├── AppointmentService.java
+│           └── AppointmentServiceImpl.java
+│
+└── frontend/                        # Frontend Application (Portal UI)
+    └── index.html                   # Single Page Application (HTML/CSS/JS)
 ```
 
 ---
